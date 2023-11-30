@@ -9,44 +9,29 @@ enum ButtonValueType {
   MaybeMined = "?"
 }
 
+type Field = {
+  button: HTMLButtonElement
+  wIndex: number
+  hIndex: number
+  checked: boolean
+}
+
 class Mines {
   private board: Array<Array<FieldType.Mined | number>> = []
-  private checkedFields: Array<{
-    wIndex: number
-    hIndex: number
-  }> = []
+  private fields: Array<Field> = []
   private minesCount: number = 0
-  private foundedMinesCount: number = 0
+  private foundMinesCount: number = 0
   private guessedMinesCount: number = 0
 
-  private readonly MINIUM_WIDTH = 2
-  private readonly MINIUM_HEIGHT = 2
-  private readonly MINIUM_PERCENT_MINES = 10
-  private readonly MAXIUM_PERCENT_MINES = 80
+  private width: number = 4
+  private height: number = 4
+  private percentMines: number = 25
 
   private readonly dashboardDivElement = document.createElement("div")
   private readonly boardDivElement = document.createElement("div")
   constructor(
-    private readonly rootElement: HTMLDivElement,
-    private width: number,
-    private height: number,
-    private percentMines: number
+    private readonly rootElement: HTMLDivElement
   ) {
-    if (width < this.MINIUM_WIDTH) {
-      throw Error(`Width must be larger than ${this.MINIUM_WIDTH}`)
-    }
-
-    if (height < this.MINIUM_HEIGHT) {
-      throw Error(`Height must be larger than ${this.MINIUM_HEIGHT}`)
-    }
-
-    if (percentMines < this.MINIUM_PERCENT_MINES) {
-      throw Error(`Persent Mines must be larger than ${this.MINIUM_PERCENT_MINES}%`)
-    }
-
-    if (percentMines > this.MAXIUM_PERCENT_MINES) {
-      throw Error(`Persent Mines cannot be larger than ${this.MAXIUM_PERCENT_MINES}%`)
-    }
   }
 
   private getRandomNumber(min: number, max: number) {
@@ -69,62 +54,59 @@ class Mines {
     }
   }
 
-  private makeButton(hIndex: number, wIndex: number) {
+  private makeField(hIndex: number, wIndex: number) {
     const button = document.createElement("button")
 
+    const field: Field = {
+      hIndex,
+      wIndex,
+      button,
+      checked: false
+    }
+
     button.value = "&nbsp"
-    button.style.width = "50px"
-    button.style.height = "50px"
-    button.style.margin = "5px"
 
     button.id = `button-${hIndex}-${wIndex}`
     button.classList.add("hw-button")
     button.innerText = ButtonValueType.Empty
 
     button.addEventListener("click", (e) => {
-      this.check(hIndex, wIndex, true)
+      this.check(field, true)
     })
 
-    let added = false
-
     button.addEventListener("auxclick", (e) => {
-      const field = this.board[hIndex][wIndex]
+      const value = this.board[hIndex][wIndex]
       if (button.innerText === ButtonValueType.Empty) {
         button.innerText = ButtonValueType.Mined
-        if (!added) {
-          added = true
-          this.guessedMinesCount++
-          if(field === FieldType.Mined) {
-            this.foundedMinesCount++
-          }
+        this.guessedMinesCount++
+        if (value === FieldType.Mined) {
+          this.foundMinesCount++
         }
       } else
-      if (button.innerText === ButtonValueType.Mined) {
-        button.innerText = ButtonValueType.MaybeMined
-        if(added) {
-          this.guessedMinesCount--
-          added = false
-          if(field === FieldType.Mined) {
-            this.foundedMinesCount--
+        if (button.innerText === ButtonValueType.Mined) {
+          button.innerText = ButtonValueType.MaybeMined
+          if (value === FieldType.Mined) {
+            this.foundMinesCount--
           }
-        }
-      } else
-      if (button.innerText === ButtonValueType.MaybeMined) {
-        button.innerText = ButtonValueType.Empty
-      }
+        } else
+          if (button.innerText === ButtonValueType.MaybeMined) {
+            button.innerText = ButtonValueType.Empty
+
+            this.guessedMinesCount--
+          }
 
       this.updateResult()
-      if(this.foundedMinesCount === this.minesCount && this.foundedMinesCount === this.guessedMinesCount) {
+      if (this.foundMinesCount === this.minesCount && this.foundMinesCount === this.guessedMinesCount) {
         this.gameOver("You win!")
       }
     })
 
-    return button
+    return field
   }
 
   private message(text: string) {
     const messageSpanElement = document.getElementById("message-span")
-    if(!messageSpanElement) return;
+    if (!messageSpanElement) return;
 
     messageSpanElement.innerText = ` ${text}`
   }
@@ -132,56 +114,60 @@ class Mines {
   private gameOver(message: string) {
     this.message(message)
 
-    for(let button of document.getElementsByClassName("hw-button")) {
-      button.setAttribute("disabled", "true")
+    for (let field of this.fields) {
+      field.button.setAttribute("disabled", "true")
+
+      const value = this.board[field.hIndex][field.wIndex]
+      if(value != 0) field.button.innerText = String(value)
     }
   }
 
-  private check(hIndex: number, wIndex: number, stopWhenClickMined: boolean = false) {
-    const checkedField = this.checkedFields.find(f => f.hIndex === hIndex && f.wIndex === wIndex)
-    if (checkedField) return;
+  private check(field: Field, stopWhenClickMined: boolean = false) {
+    if (field.checked) return;
 
-    this.checkedFields.push({
-      wIndex,
-      hIndex
-    })
+    field.checked = true
 
-    const button = document.getElementById(`button-${hIndex}-${wIndex}`)
-    if (!button) return;
+    field.button.innerText = ButtonValueType.Empty
+    field.button.setAttribute("disabled", "true")
 
-    button.innerText = ButtonValueType.Empty
-    button.setAttribute("disabled", "true")
+    const value = this.board[field.hIndex][field.wIndex]
 
-    const field = this.board[hIndex][wIndex]
-    if (field === FieldType.Mined && stopWhenClickMined) {
+    if (value === FieldType.Mined && stopWhenClickMined) {
       this.gameOver("Game Over. You lost!")
       return;
     }
 
-    if (field === FieldType.Empty) {
-      this.around(hIndex, wIndex, (currentWIndex, currentHIndex, hBoard) => {
-        this.check(currentHIndex, currentWIndex)
+    if (value === FieldType.Empty) {
+      this.around(field.hIndex, field.wIndex, (currentWIndex, currentHIndex) => {
+        const field = this.fields.find(f => f.hIndex === currentHIndex && f.wIndex === currentWIndex)
+        if(!field) return;
+
+        this.check(field)
       })
       return;
     }
 
-    button.innerText = String(field)
+    field.button.innerText = String(value)
   }
 
   private updateResult() {
     const resultSpanElement = document.getElementById("result-span")
-    if(!resultSpanElement) return;
+    if (!resultSpanElement) return;
 
     resultSpanElement.innerText = String(this.guessedMinesCount)
   }
 
-  private makeDashboard() {
-    while (this.dashboardDivElement.firstChild) {
-      const lastElement = this.dashboardDivElement.lastChild
+  private clearElement(element: HTMLElement) {
+    while (element.firstChild) {
+      const lastElement = element.lastChild
       if (lastElement === null) break;
 
-      this.dashboardDivElement.removeChild(lastElement);
+      element.removeChild(lastElement);
     }
+  }
+
+  private makeDashboard() {
+    this.clearElement(this.dashboardDivElement)
 
     const resultDivElement = document.createElement("div")
 
@@ -189,7 +175,7 @@ class Mines {
     resultSpanElement.id = "result-span"
     resultSpanElement.innerText = String(this.guessedMinesCount)
 
-    const startContent = document.createTextNode("Found: ")
+    const startContent = document.createTextNode("Guessed: ")
     const endContent = document.createTextNode(`/${this.minesCount}`)
 
     const messageSpanElement = document.createElement("span")
@@ -232,7 +218,7 @@ class Mines {
 
     const widthInput = document.createElement("input")
     widthInput.type = "number"
-    widthInput.value = String(this.height)
+    widthInput.value = String(this.width)
 
     widthInput.addEventListener("change", () => {
       this.width = Number(widthInput.value)
@@ -265,17 +251,13 @@ class Mines {
 
   private init() {
     this.board = []
-    this.checkedFields = []
+    this.fields = []
     this.minesCount = Math.floor(((this.width * this.height) / 100) * this.percentMines)
-    this.foundedMinesCount = 0
+    this.foundMinesCount = 0
     this.guessedMinesCount = 0
 
-    while (this.rootElement.firstChild) {
-      const lastElement = this.rootElement.lastChild
-      if (lastElement === null) break;
+    this.clearElement(this.rootElement)
 
-      this.rootElement.removeChild(lastElement);
-    }
     this.rootElement.appendChild(this.dashboardDivElement)
     this.rootElement.appendChild(this.boardDivElement)
 
@@ -301,20 +283,19 @@ class Mines {
       const hBoard = this.board[hIndex]
       const wrapperDivElement = document.createElement("div")
       for (let wIndex = 0; wIndex < hBoard.length; wIndex++) {
-        const button = this.makeButton(hIndex, wIndex)
+        const field = this.makeField(hIndex, wIndex)
+        this.fields.push(field)
 
-        wrapperDivElement.appendChild(button)
+        wrapperDivElement.appendChild(field.button)
       }
 
       this.boardDivElement.appendChild(wrapperDivElement)
     }
   }
 
-  public start() {
-    this.init()
-
-    let addedminesCount = 0
-    while (addedminesCount < this.minesCount) {
+  private generateMines() {
+    let addedMinesCount = 0
+    while (addedMinesCount < this.minesCount) {
       const hIndex = this.getRandomNumber(0, this.board.length - 1)
       const hBoard = this.board[hIndex]
 
@@ -322,7 +303,7 @@ class Mines {
 
       const field = hBoard[wIndex]
       if (field !== FieldType.Mined) {
-        addedminesCount++
+        addedMinesCount++
         hBoard[wIndex] = FieldType.Mined
         this.around(hIndex, wIndex, (currentWIndex, currentHIndex, hBoard) => {
           const field = hBoard[currentWIndex]
@@ -332,10 +313,15 @@ class Mines {
         })
       }
     }
+  }
 
-    console.table(this.board)
+  public start() {
+    this.init()
+    this.generateMines()
     this.makeBoard()
     this.makeDashboard()
+
+    console.table(this.board)
   }
 }
 
@@ -345,7 +331,7 @@ function main() {
 
   const div = document.createElement("div")
 
-  const mines = new Mines(div, 4, 4, 25)
+  const mines = new Mines(div)
 
   app.appendChild(div)
   mines.start()

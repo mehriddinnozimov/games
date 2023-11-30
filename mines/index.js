@@ -12,37 +12,18 @@ var ButtonValueType;
 })(ButtonValueType || (ButtonValueType = {}));
 class Mines {
     rootElement;
-    width;
-    height;
-    percentMines;
     board = [];
-    checkedFields = [];
+    fields = [];
     minesCount = 0;
-    foundedMinesCount = 0;
+    foundMinesCount = 0;
     guessedMinesCount = 0;
-    MINIUM_WIDTH = 2;
-    MINIUM_HEIGHT = 2;
-    MINIUM_PERCENT_MINES = 10;
-    MAXIUM_PERCENT_MINES = 80;
+    width = 4;
+    height = 4;
+    percentMines = 25;
     dashboardDivElement = document.createElement("div");
     boardDivElement = document.createElement("div");
-    constructor(rootElement, width, height, percentMines) {
+    constructor(rootElement) {
         this.rootElement = rootElement;
-        this.width = width;
-        this.height = height;
-        this.percentMines = percentMines;
-        if (width < this.MINIUM_WIDTH) {
-            throw Error(`Width must be larger than ${this.MINIUM_WIDTH}`);
-        }
-        if (height < this.MINIUM_HEIGHT) {
-            throw Error(`Height must be larger than ${this.MINIUM_HEIGHT}`);
-        }
-        if (percentMines < this.MINIUM_PERCENT_MINES) {
-            throw Error(`Persent Mines must be larger than ${this.MINIUM_PERCENT_MINES}%`);
-        }
-        if (percentMines > this.MAXIUM_PERCENT_MINES) {
-            throw Error(`Persent Mines cannot be larger than ${this.MAXIUM_PERCENT_MINES}%`);
-        }
     }
     getRandomNumber(min, max) {
         return Math.floor(Math.random() * (max - min + 1) + min);
@@ -65,50 +46,46 @@ class Mines {
             }
         }
     }
-    makeButton(hIndex, wIndex) {
+    makeField(hIndex, wIndex) {
         const button = document.createElement("button");
+        const field = {
+            hIndex,
+            wIndex,
+            button,
+            checked: false
+        };
         button.value = "&nbsp";
-        button.style.width = "50px";
-        button.style.height = "50px";
-        button.style.margin = "5px";
         button.id = `button-${hIndex}-${wIndex}`;
         button.classList.add("hw-button");
         button.innerText = ButtonValueType.Empty;
         button.addEventListener("click", (e) => {
-            this.check(hIndex, wIndex, true);
+            this.check(field, true);
         });
-        let added = false;
         button.addEventListener("auxclick", (e) => {
-            const field = this.board[hIndex][wIndex];
+            const value = this.board[hIndex][wIndex];
             if (button.innerText === ButtonValueType.Empty) {
                 button.innerText = ButtonValueType.Mined;
-                if (!added) {
-                    added = true;
-                    this.guessedMinesCount++;
-                    if (field === FieldType.Mined) {
-                        this.foundedMinesCount++;
-                    }
+                this.guessedMinesCount++;
+                if (value === FieldType.Mined) {
+                    this.foundMinesCount++;
                 }
             }
             else if (button.innerText === ButtonValueType.Mined) {
                 button.innerText = ButtonValueType.MaybeMined;
-                if (added) {
-                    this.guessedMinesCount--;
-                    added = false;
-                    if (field === FieldType.Mined) {
-                        this.foundedMinesCount--;
-                    }
+                if (value === FieldType.Mined) {
+                    this.foundMinesCount--;
                 }
             }
             else if (button.innerText === ButtonValueType.MaybeMined) {
                 button.innerText = ButtonValueType.Empty;
+                this.guessedMinesCount--;
             }
             this.updateResult();
-            if (this.foundedMinesCount === this.minesCount && this.foundedMinesCount === this.guessedMinesCount) {
+            if (this.foundMinesCount === this.minesCount && this.foundMinesCount === this.guessedMinesCount) {
                 this.gameOver("You win!");
             }
         });
-        return button;
+        return field;
     }
     message(text) {
         const messageSpanElement = document.getElementById("message-span");
@@ -118,35 +95,34 @@ class Mines {
     }
     gameOver(message) {
         this.message(message);
-        for (let button of document.getElementsByClassName("hw-button")) {
-            button.setAttribute("disabled", "true");
+        for (let field of this.fields) {
+            field.button.setAttribute("disabled", "true");
+            const value = this.board[field.hIndex][field.wIndex];
+            if (value != 0)
+                field.button.innerText = String(value);
         }
     }
-    check(hIndex, wIndex, stopWhenClickMined = false) {
-        const checkedField = this.checkedFields.find(f => f.hIndex === hIndex && f.wIndex === wIndex);
-        if (checkedField)
+    check(field, stopWhenClickMined = false) {
+        if (field.checked)
             return;
-        this.checkedFields.push({
-            wIndex,
-            hIndex
-        });
-        const button = document.getElementById(`button-${hIndex}-${wIndex}`);
-        if (!button)
-            return;
-        button.innerText = ButtonValueType.Empty;
-        button.setAttribute("disabled", "true");
-        const field = this.board[hIndex][wIndex];
-        if (field === FieldType.Mined && stopWhenClickMined) {
+        field.checked = true;
+        field.button.innerText = ButtonValueType.Empty;
+        field.button.setAttribute("disabled", "true");
+        const value = this.board[field.hIndex][field.wIndex];
+        if (value === FieldType.Mined && stopWhenClickMined) {
             this.gameOver("Game Over. You lost!");
             return;
         }
-        if (field === FieldType.Empty) {
-            this.around(hIndex, wIndex, (currentWIndex, currentHIndex, hBoard) => {
-                this.check(currentHIndex, currentWIndex);
+        if (value === FieldType.Empty) {
+            this.around(field.hIndex, field.wIndex, (currentWIndex, currentHIndex) => {
+                const field = this.fields.find(f => f.hIndex === currentHIndex && f.wIndex === currentWIndex);
+                if (!field)
+                    return;
+                this.check(field);
             });
             return;
         }
-        button.innerText = String(field);
+        field.button.innerText = String(value);
     }
     updateResult() {
         const resultSpanElement = document.getElementById("result-span");
@@ -154,18 +130,21 @@ class Mines {
             return;
         resultSpanElement.innerText = String(this.guessedMinesCount);
     }
-    makeDashboard() {
-        while (this.dashboardDivElement.firstChild) {
-            const lastElement = this.dashboardDivElement.lastChild;
+    clearElement(element) {
+        while (element.firstChild) {
+            const lastElement = element.lastChild;
             if (lastElement === null)
                 break;
-            this.dashboardDivElement.removeChild(lastElement);
+            element.removeChild(lastElement);
         }
+    }
+    makeDashboard() {
+        this.clearElement(this.dashboardDivElement);
         const resultDivElement = document.createElement("div");
         const resultSpanElement = document.createElement("span");
         resultSpanElement.id = "result-span";
         resultSpanElement.innerText = String(this.guessedMinesCount);
-        const startContent = document.createTextNode("Found: ");
+        const startContent = document.createTextNode("Guessed: ");
         const endContent = document.createTextNode(`/${this.minesCount}`);
         const messageSpanElement = document.createElement("span");
         messageSpanElement.id = "message-span";
@@ -197,7 +176,7 @@ class Mines {
         widthInputLabel.innerText = "Width: ";
         const widthInput = document.createElement("input");
         widthInput.type = "number";
-        widthInput.value = String(this.height);
+        widthInput.value = String(this.width);
         widthInput.addEventListener("change", () => {
             this.width = Number(widthInput.value);
         });
@@ -222,16 +201,11 @@ class Mines {
     }
     init() {
         this.board = [];
-        this.checkedFields = [];
+        this.fields = [];
         this.minesCount = Math.floor(((this.width * this.height) / 100) * this.percentMines);
-        this.foundedMinesCount = 0;
+        this.foundMinesCount = 0;
         this.guessedMinesCount = 0;
-        while (this.rootElement.firstChild) {
-            const lastElement = this.rootElement.lastChild;
-            if (lastElement === null)
-                break;
-            this.rootElement.removeChild(lastElement);
-        }
+        this.clearElement(this.rootElement);
         this.rootElement.appendChild(this.dashboardDivElement);
         this.rootElement.appendChild(this.boardDivElement);
         for (let h = 0; h < this.height; h++) {
@@ -253,22 +227,22 @@ class Mines {
             const hBoard = this.board[hIndex];
             const wrapperDivElement = document.createElement("div");
             for (let wIndex = 0; wIndex < hBoard.length; wIndex++) {
-                const button = this.makeButton(hIndex, wIndex);
-                wrapperDivElement.appendChild(button);
+                const field = this.makeField(hIndex, wIndex);
+                this.fields.push(field);
+                wrapperDivElement.appendChild(field.button);
             }
             this.boardDivElement.appendChild(wrapperDivElement);
         }
     }
-    start() {
-        this.init();
-        let addedminesCount = 0;
-        while (addedminesCount < this.minesCount) {
+    generateMines() {
+        let addedMinesCount = 0;
+        while (addedMinesCount < this.minesCount) {
             const hIndex = this.getRandomNumber(0, this.board.length - 1);
             const hBoard = this.board[hIndex];
             const wIndex = this.getRandomNumber(0, hBoard.length - 1);
             const field = hBoard[wIndex];
             if (field !== FieldType.Mined) {
-                addedminesCount++;
+                addedMinesCount++;
                 hBoard[wIndex] = FieldType.Mined;
                 this.around(hIndex, wIndex, (currentWIndex, currentHIndex, hBoard) => {
                     const field = hBoard[currentWIndex];
@@ -278,9 +252,13 @@ class Mines {
                 });
             }
         }
-        console.table(this.board);
+    }
+    start() {
+        this.init();
+        this.generateMines();
         this.makeBoard();
         this.makeDashboard();
+        console.table(this.board);
     }
 }
 function main() {
@@ -288,7 +266,7 @@ function main() {
     if (!app)
         return;
     const div = document.createElement("div");
-    const mines = new Mines(div, 4, 4, 25);
+    const mines = new Mines(div);
     app.appendChild(div);
     mines.start();
 }
