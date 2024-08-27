@@ -321,6 +321,10 @@ class BaseShape {
     return new Set(this.blocks.map((b) => b.x)).size;
   }
 
+  get height() {
+    return new Set(this.blocks.map((b) => b.y)).size;
+  }
+
   draw(ctx: CanvasRenderingContext2D) {
     for (const block of this.blocks) {
       block.draw(ctx);
@@ -425,6 +429,11 @@ class Shape extends BaseShape {
     this.update();
   }
 
+  reshape(ctx: CanvasRenderingContext2D) {
+    this.clear(ctx);
+    this.update();
+  }
+
   private update() {
     if (this.format > shapeFormats[this.type]) {
       this.format = 0;
@@ -450,26 +459,35 @@ class Shape extends BaseShape {
 class Tetris {
   private width = 0;
   private height = 0;
-  private isPaused = false;
+  private isPaused = true;
   private waitForNextShape = 200;
   private delayForDown = 1000;
+  private rightBarWidth: number;
   private tetrisShape: BaseShape;
   private currentShape: Shape | undefined;
+  private nextShape: Shape | undefined;
+  public score = 0;
+  private rightBarColumn: number = 6;
+  private textColor = "white";
+  private textStyle = "";
   constructor(
     private readonly canvas: HTMLCanvasElement,
-    public readonly row: number = 22,
+    public readonly row: number = 20,
     public readonly column: number = 10,
     public readonly blockSize: number = 36,
     public readonly defaultColor: string = "black",
   ) {
     this.width = this.column * this.blockSize;
     this.height = this.row * this.blockSize;
+    this.rightBarWidth = this.blockSize * this.rightBarColumn;
     this.tetrisShape = new BaseShape(
       [],
       this.blockSize,
       this.defaultColor,
       this.defaultColor,
     );
+
+    this.textStyle = `${this.blockSize / 2}px Arial`;
   }
 
   public shapeMove(
@@ -500,26 +518,25 @@ class Tetris {
   private randomShape() {
     const shapeTypes = Object.values(ShapeType);
     const index = random(0, shapeTypes.length - 1);
-    this.currentShape = new Shape(
+    const shape = new Shape(
       shapeTypes[index],
       this.blockSize,
       this.defaultColor,
       0,
-      0 - this.blockSize,
+      0,
       0,
     );
-
-    const fixedMiddle =
-      Math.floor(this.column / 2) + 1 - Math.max(this.currentShape.width, 2);
-    this.currentShape.x = fixedMiddle * this.blockSize;
+    return shape;
   }
 
   public init() {
-    this.canvas.width = this.width;
+    this.canvas.width = this.width + this.rightBarWidth;
     this.canvas.height = this.height;
 
     const ctx = this.context();
     this.clear(ctx);
+    this.clearRightBar(ctx);
+    this.updateScore(0);
 
     document.addEventListener("keydown", (event) => {
       if (!Object.keys(keys).includes(event.key) || !this.currentShape) return;
@@ -527,13 +544,13 @@ class Tetris {
       if (key === Key.Pause) {
         this.isPaused = !this.isPaused;
         if (!this.isPaused) this.anima();
-      } else {
+      } else if (!this.isPaused) {
         this.currentShape = this.shapeMove(this.currentShape, key);
         this.currentShape.draw(ctx);
       }
     });
 
-    this.randomShape();
+    this.newShape();
     this.anima();
   }
 
@@ -552,12 +569,10 @@ class Tetris {
       const currentShape = this.shapeMove(this.currentShape, Key.Down);
 
       if (currentShape === this.currentShape) {
-        console.log("cannot move");
         if (await this.isEndOfCurrentShape()) {
-          console.log("eofcs");
           this.tetrisShape.blocks.push(...this.currentShape.blocks);
           this.removeLineShape();
-          this.randomShape();
+          this.newShape();
         }
       } else {
         this.currentShape = currentShape;
@@ -568,12 +583,38 @@ class Tetris {
     this.anima();
   }
 
+  public newShape() {
+    if (!this.nextShape) {
+      this.nextShape = this.randomShape();
+    } else {
+      this.nextShape.reshape(this.context());
+    }
+    this.currentShape = this.nextShape;
+    this.currentShape.x =
+      this.fixedMiddle(this.column, this.currentShape) * this.blockSize;
+    this.currentShape.y = 0 - this.currentShape.height * this.blockSize;
+
+    this.nextShape = this.randomShape();
+
+    this.nextShape.y = this.blockSize;
+
+    this.nextShape.x =
+      this.rightBarWidth / 2 -
+      (this.nextShape.width * this.blockSize) / 2 +
+      this.width;
+
+    this.nextShape.draw(this.context());
+  }
+
+  fixedMiddle(column: number, shape: Shape, addition: number = 1) {
+    return Math.floor(column / 2) + addition - Math.max(shape.width, 2);
+  }
+
   private removeLineShape() {
     const ctx = this.context();
     const lineBlocks = Object.groupBy(this.tetrisShape.blocks, (b) =>
       String(b.y),
     );
-    console.log({ lineBlocks });
 
     let removed = 0;
     const removedLines: Block[] = [];
@@ -611,7 +652,6 @@ class Tetris {
         const lineShape = this.shapeMove(_lineShape, Key.Down);
 
         const canMove = lineShape !== _lineShape;
-        console.log({ lineShape, tetrisShape: this.tetrisShape, canMove });
         if (canMove) {
           linesCanMove = canMove;
           for (let index = 0; index < _lineShape.blocks.length; index++) {
@@ -623,14 +663,46 @@ class Tetris {
       }
     }
 
+    this.updateScore(removed);
     this.clear(ctx);
     this.tetrisShape.draw(ctx);
-    console.log({ lineBlocks });
+  }
+
+  updateScore(x: number) {
+    this.delayForDown = this.delayForDown - x * 10;
+    if (x > 2) x = x * 2;
+    this.score += x;
+
+    const score = `Score: ${this.score}`;
+    const ctx = this.context();
+
+    ctx.fillStyle = this.defaultColor;
+
+    ctx.fillRect(
+      this.width + 2,
+      this.height - this.blockSize * 3,
+      this.rightBarWidth,
+      this.height,
+    );
+    ctx.font = this.textStyle;
+    ctx.fillStyle = this.textColor;
+    ctx.fillText(
+      score,
+      this.width + this.rightBarWidth / 2 - this.blockSize,
+      this.height - this.blockSize * 2,
+    );
+  }
+
+  private clearRightBar(ctx: CanvasRenderingContext2D) {
+    ctx.fillStyle = "black";
+    ctx.fillRect(this.width, 0, this.canvas.width, this.canvas.height);
+    ctx.fillStyle = "white";
+    ctx.fillRect(this.width + 1, 0, 1, this.canvas.height);
   }
 
   private clear(ctx: CanvasRenderingContext2D) {
     ctx.fillStyle = "black";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, this.width, this.canvas.height);
   }
 
   private context() {
@@ -649,7 +721,6 @@ function main() {
 
   const tetris = new Tetris(canvas);
   tetris.init();
-  console.log(tetris);
 }
 
 main();
