@@ -1,10 +1,9 @@
 # Games
-Jsda yaratilgan oddiy o`yinlar
+Simple games created with JS
 
 ## Mines
-![Mines o`yini](./mines/mines.png).
+![Mines](./mines/mines.png).
 
 ## Simon
 
-![Simon o`yini](./simon/simon.png).
-
+![Simon](./simon/simon.png).
