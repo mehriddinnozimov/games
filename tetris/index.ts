@@ -32,8 +32,8 @@ const keys = {
   s: Key.NextFormat,
   a: Key.Left,
   d: Key.Right,
+  Space: Key.Down,
   " ": Key.Down,
-  Spacebar: Key.Down,
   p: Key.Pause,
 };
 
@@ -461,7 +461,8 @@ class Tetris {
   private height = 0;
   private isPaused = true;
   private waitForNextShape = 200;
-  private delayForDown = 1000;
+  private _delayForDown = 1000;
+  private delayForDown;
   private rightBarWidth: number;
   private tetrisShape: BaseShape;
   private currentShape: Shape | undefined;
@@ -470,6 +471,7 @@ class Tetris {
   private rightBarColumn: number = 6;
   private textColor = "white";
   private textStyle = "";
+  private isGameOver = false;
   constructor(
     private readonly canvas: HTMLCanvasElement,
     public readonly row: number = 20,
@@ -488,6 +490,7 @@ class Tetris {
     );
 
     this.textStyle = `${this.blockSize / 2}px Arial`;
+    this.delayForDown = this._delayForDown;
   }
 
   public shapeMove(
@@ -536,14 +539,22 @@ class Tetris {
     const ctx = this.context();
     this.clear(ctx);
     this.clearRightBar(ctx);
+    this.updateRightBar();
     this.updateScore(0);
 
     document.addEventListener("keydown", (event) => {
       if (!Object.keys(keys).includes(event.key) || !this.currentShape) return;
       const key = keys[event.key as keyof typeof keys];
       if (key === Key.Pause) {
+        if (event.repeat) return;
         this.isPaused = !this.isPaused;
-        if (!this.isPaused) this.anima();
+
+        if (!this.isPaused) {
+          if (this.isGameOver) {
+            this.clear(ctx);
+          }
+          this.anima();
+        }
       } else if (!this.isPaused) {
         this.currentShape = this.shapeMove(this.currentShape, key);
         this.currentShape.draw(ctx);
@@ -562,6 +573,25 @@ class Tetris {
     return this.currentShape === currentShape;
   }
 
+  gameOver() {
+    this.isPaused = true;
+    this.isGameOver = true;
+    const ctx = this.context();
+    this.tetrisShape.clear(ctx);
+    this.currentShape?.clear(ctx);
+    this.nextShape?.clear(ctx);
+    ctx.font = this.textStyle;
+    ctx.fillStyle = this.textColor;
+    const text = `Game Over. Score: ${this.score}`;
+    const textWidth = ctx.measureText(text).width;
+    const x = (this.width - textWidth) / 2;
+    ctx.fillText(text, x, (this.row / 2) * this.blockSize);
+
+    this.score = 0;
+    this.delayForDown = this._delayForDown;
+    this.updateScore(0);
+  }
+
   private async anima() {
     await delay(this.delayForDown);
     if (this.isPaused) return;
@@ -570,9 +600,13 @@ class Tetris {
 
       if (currentShape === this.currentShape) {
         if (await this.isEndOfCurrentShape()) {
-          this.tetrisShape.blocks.push(...this.currentShape.blocks);
-          this.removeLineShape();
-          this.newShape();
+          if (this.currentShape.y < 0) {
+            this.gameOver();
+          } else {
+            this.tetrisShape.blocks.push(...this.currentShape.blocks);
+            this.removeLineShape();
+            this.newShape();
+          }
         }
       } else {
         this.currentShape = currentShape;
@@ -673,24 +707,91 @@ class Tetris {
     if (x > 2) x = x * 2;
     this.score += x;
 
-    const score = `Score: ${this.score}`;
+    const scoreText = `Score: ${this.score}`;
     const ctx = this.context();
 
     ctx.fillStyle = this.defaultColor;
 
     ctx.fillRect(
       this.width + 2,
-      this.height - this.blockSize * 3,
+      this.height - this.blockSize * 2,
       this.rightBarWidth,
       this.height,
     );
     ctx.font = this.textStyle;
     ctx.fillStyle = this.textColor;
     ctx.fillText(
-      score,
-      this.width + this.rightBarWidth / 2 - this.blockSize,
-      this.height - this.blockSize * 2,
+      scoreText,
+      this.calculateMiddle(scoreText, ctx, this.rightBarWidth) + this.width,
+      this.height - this.blockSize * 1,
     );
+  }
+
+  updateRightBar() {
+    const ctx = this.context();
+    ctx.font = this.textStyle;
+    ctx.fillStyle = this.textColor;
+
+    const keysText = "Keys:";
+    ctx.fillText(
+      keysText,
+      this.calculateMiddle(keysText, ctx, this.rightBarWidth) + this.width,
+      this.height - this.blockSize * 10,
+    );
+
+    const pauseText = `${getKeyFromValue(keys, Key.Pause)}: Pause/Start`;
+    ctx.fillText(
+      pauseText,
+      this.calculateMiddle(pauseText, ctx, this.rightBarWidth) + this.width,
+      this.height - this.blockSize * 9,
+    );
+
+    const downText = `${getKeyFromValue(keys, Key.Down)}: Down`;
+    ctx.fillText(
+      downText,
+      this.calculateMiddle(downText, ctx, this.rightBarWidth) + this.width,
+      this.height - this.blockSize * 8,
+    );
+
+    const rotateLeftText = `${getKeyFromValue(keys, Key.NextFormat)}: Rotate Right`;
+    ctx.fillText(
+      rotateLeftText,
+      this.calculateMiddle(rotateLeftText, ctx, this.rightBarWidth) +
+        this.width,
+      this.height - this.blockSize * 7,
+    );
+
+    const rotateRightText = `${getKeyFromValue(keys, Key.PreviousFormat)}: Rotate Left`;
+    ctx.fillText(
+      rotateRightText,
+      this.calculateMiddle(rotateRightText, ctx, this.rightBarWidth) +
+        this.width,
+      this.height - this.blockSize * 6,
+    );
+
+    const toRightText = `${getKeyFromValue(keys, Key.Right)}: To Right`;
+    ctx.fillText(
+      toRightText,
+      this.calculateMiddle(toRightText, ctx, this.rightBarWidth) + this.width,
+      this.height - this.blockSize * 5,
+    );
+
+    const toLeftText = `${getKeyFromValue(keys, Key.Left)}: To Left`;
+    ctx.fillText(
+      toLeftText,
+      this.calculateMiddle(toLeftText, ctx, this.rightBarWidth) + this.width,
+      this.height - this.blockSize * 4,
+    );
+  }
+
+  private calculateMiddle(
+    text: string,
+    ctx: CanvasRenderingContext2D,
+    width: number,
+  ) {
+    const textWidth = ctx.measureText(text).width;
+    const x = (width - textWidth) / 2;
+    return x;
   }
 
   private clearRightBar(ctx: CanvasRenderingContext2D) {
@@ -712,11 +813,10 @@ class Tetris {
   }
 }
 
-const canvas = document.createElement("canvas");
-
 function main() {
   const app = document.getElementById("app");
   if (!app) return;
+  const canvas = document.createElement("canvas");
   app.appendChild(canvas);
 
   const tetris = new Tetris(canvas);
@@ -735,4 +835,8 @@ function delay(ms: number) {
 
 function random(x: number, y: number) {
   return Math.floor(Math.random() * (y - x + 1)) + x;
+}
+
+function getKeyFromValue<T extends object>(obj: T, value: T[keyof T]) {
+  return Object.keys(obj).find((key) => obj[key as keyof T] === value);
 }

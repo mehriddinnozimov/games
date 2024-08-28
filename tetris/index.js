@@ -35,8 +35,8 @@ const keys = {
     s: Key.NextFormat,
     a: Key.Left,
     d: Key.Right,
+    Space: Key.Down,
     " ": Key.Down,
-    Spacebar: Key.Down,
     p: Key.Pause,
 };
 var ShapeType;
@@ -424,7 +424,8 @@ class Tetris {
     height = 0;
     isPaused = true;
     waitForNextShape = 200;
-    delayForDown = 1000;
+    _delayForDown = 1000;
+    delayForDown;
     rightBarWidth;
     tetrisShape;
     currentShape;
@@ -433,6 +434,7 @@ class Tetris {
     rightBarColumn = 6;
     textColor = "white";
     textStyle = "";
+    isGameOver = false;
     constructor(canvas, row = 20, column = 10, blockSize = 36, defaultColor = "black") {
         this.canvas = canvas;
         this.row = row;
@@ -444,6 +446,7 @@ class Tetris {
         this.rightBarWidth = this.blockSize * this.rightBarColumn;
         this.tetrisShape = new BaseShape([], this.blockSize, this.defaultColor, this.defaultColor);
         this.textStyle = `${this.blockSize / 2}px Arial`;
+        this.delayForDown = this._delayForDown;
     }
     shapeMove(_shape, key) {
         const shape = _shape.copy();
@@ -475,15 +478,22 @@ class Tetris {
         const ctx = this.context();
         this.clear(ctx);
         this.clearRightBar(ctx);
+        this.updateRightBar();
         this.updateScore(0);
         document.addEventListener("keydown", (event) => {
             if (!Object.keys(keys).includes(event.key) || !this.currentShape)
                 return;
             const key = keys[event.key];
             if (key === Key.Pause) {
+                if (event.repeat)
+                    return;
                 this.isPaused = !this.isPaused;
-                if (!this.isPaused)
+                if (!this.isPaused) {
+                    if (this.isGameOver) {
+                        this.clear(ctx);
+                    }
                     this.anima();
+                }
             }
             else if (!this.isPaused) {
                 this.currentShape = this.shapeMove(this.currentShape, key);
@@ -500,6 +510,23 @@ class Tetris {
         const currentShape = this.shapeMove(this.currentShape, Key.Down);
         return this.currentShape === currentShape;
     }
+    gameOver() {
+        this.isPaused = true;
+        this.isGameOver = true;
+        const ctx = this.context();
+        this.tetrisShape.clear(ctx);
+        this.currentShape?.clear(ctx);
+        this.nextShape?.clear(ctx);
+        ctx.font = this.textStyle;
+        ctx.fillStyle = this.textColor;
+        const text = `Game Over. Score: ${this.score}`;
+        const textWidth = ctx.measureText(text).width;
+        const x = (this.width - textWidth) / 2;
+        ctx.fillText(text, x, (this.row / 2) * this.blockSize);
+        this.score = 0;
+        this.delayForDown = this._delayForDown;
+        this.updateScore(0);
+    }
     async anima() {
         await delay(this.delayForDown);
         if (this.isPaused)
@@ -508,9 +535,14 @@ class Tetris {
             const currentShape = this.shapeMove(this.currentShape, Key.Down);
             if (currentShape === this.currentShape) {
                 if (await this.isEndOfCurrentShape()) {
-                    this.tetrisShape.blocks.push(...this.currentShape.blocks);
-                    this.removeLineShape();
-                    this.newShape();
+                    if (this.currentShape.y < 0) {
+                        this.gameOver();
+                    }
+                    else {
+                        this.tetrisShape.blocks.push(...this.currentShape.blocks);
+                        this.removeLineShape();
+                        this.newShape();
+                    }
                 }
             }
             else {
@@ -591,13 +623,39 @@ class Tetris {
         if (x > 2)
             x = x * 2;
         this.score += x;
-        const score = `Score: ${this.score}`;
+        const scoreText = `Score: ${this.score}`;
         const ctx = this.context();
         ctx.fillStyle = this.defaultColor;
-        ctx.fillRect(this.width + 2, this.height - this.blockSize * 3, this.rightBarWidth, this.height);
+        ctx.fillRect(this.width + 2, this.height - this.blockSize * 2, this.rightBarWidth, this.height);
         ctx.font = this.textStyle;
         ctx.fillStyle = this.textColor;
-        ctx.fillText(score, this.width + this.rightBarWidth / 2 - this.blockSize, this.height - this.blockSize * 2);
+        ctx.fillText(scoreText, this.calculateMiddle(scoreText, ctx, this.rightBarWidth) + this.width, this.height - this.blockSize * 1);
+    }
+    updateRightBar() {
+        const ctx = this.context();
+        ctx.font = this.textStyle;
+        ctx.fillStyle = this.textColor;
+        const keysText = "Keys:";
+        ctx.fillText(keysText, this.calculateMiddle(keysText, ctx, this.rightBarWidth) + this.width, this.height - this.blockSize * 10);
+        const pauseText = `${getKeyFromValue(keys, Key.Pause)}: Pause/Start`;
+        ctx.fillText(pauseText, this.calculateMiddle(pauseText, ctx, this.rightBarWidth) + this.width, this.height - this.blockSize * 9);
+        const downText = `${getKeyFromValue(keys, Key.Down)}: Down`;
+        ctx.fillText(downText, this.calculateMiddle(downText, ctx, this.rightBarWidth) + this.width, this.height - this.blockSize * 8);
+        const rotateLeftText = `${getKeyFromValue(keys, Key.NextFormat)}: Rotate Right`;
+        ctx.fillText(rotateLeftText, this.calculateMiddle(rotateLeftText, ctx, this.rightBarWidth) +
+            this.width, this.height - this.blockSize * 7);
+        const rotateRightText = `${getKeyFromValue(keys, Key.PreviousFormat)}: Rotate Left`;
+        ctx.fillText(rotateRightText, this.calculateMiddle(rotateRightText, ctx, this.rightBarWidth) +
+            this.width, this.height - this.blockSize * 6);
+        const toRightText = `${getKeyFromValue(keys, Key.Right)}: To Right`;
+        ctx.fillText(toRightText, this.calculateMiddle(toRightText, ctx, this.rightBarWidth) + this.width, this.height - this.blockSize * 5);
+        const toLeftText = `${getKeyFromValue(keys, Key.Left)}: To Left`;
+        ctx.fillText(toLeftText, this.calculateMiddle(toLeftText, ctx, this.rightBarWidth) + this.width, this.height - this.blockSize * 4);
+    }
+    calculateMiddle(text, ctx, width) {
+        const textWidth = ctx.measureText(text).width;
+        const x = (width - textWidth) / 2;
+        return x;
     }
     clearRightBar(ctx) {
         ctx.fillStyle = "black";
@@ -616,11 +674,11 @@ class Tetris {
         return ctx;
     }
 }
-const canvas = document.createElement("canvas");
 function main() {
     const app = document.getElementById("app");
     if (!app)
         return;
+    const canvas = document.createElement("canvas");
     app.appendChild(canvas);
     const tetris = new Tetris(canvas);
     tetris.init();
@@ -635,4 +693,7 @@ function delay(ms) {
 }
 function random(x, y) {
     return Math.floor(Math.random() * (y - x + 1)) + x;
+}
+function getKeyFromValue(obj, value) {
+    return Object.keys(obj).find((key) => obj[key] === value);
 }
