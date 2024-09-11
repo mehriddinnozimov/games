@@ -1,24 +1,46 @@
 "use strict";
 class Block {
     color;
+    emptyColor;
     width;
     height;
-    x;
-    y;
-    constructor(color = "black", width = 32, height = 32, x = 0, y = 0) {
+    _x;
+    _y;
+    old_x = 0;
+    old_y = 0;
+    constructor(color = "black", emptyColor = "black", width = 32, height = 32, _x = 0, _y = 0) {
         this.color = color;
+        this.emptyColor = emptyColor;
         this.width = width;
         this.height = height;
-        this.x = x;
-        this.y = y;
+        this._x = _x;
+        this._y = _y;
+    }
+    set x(x) {
+        this.old_x = this._x;
+        this._x = x;
+    }
+    set y(y) {
+        this.old_y = this._y;
+        this._y = y;
+    }
+    get x() {
+        return this._x;
+    }
+    get y() {
+        return this._y;
     }
     draw(ctx) {
         ctx.fillStyle = this.color;
         ctx.fillRect(this.x, this.y, this.width, this.height);
         ctx.strokeRect(this.x, this.y, this.width, this.height);
     }
+    clear(ctx) {
+        ctx.fillStyle = this.emptyColor;
+        ctx.fillRect(this.old_x, this.old_y, this.width, this.height);
+    }
     copy() {
-        return new Block(this.color, this.width, this.height, this.x, this.y);
+        return new Block(this.color, this.emptyColor, this.width, this.height, this._x, this._y);
     }
 }
 var Key;
@@ -51,7 +73,7 @@ var ShapeType;
 })(ShapeType || (ShapeType = {}));
 const shapeColors = {
     [ShapeType.I]: "red",
-    [ShapeType.O]: "blue",
+    [ShapeType.O]: "RoyalBlue",
     [ShapeType.J]: "grey",
     [ShapeType.L]: "yellow",
     [ShapeType.S]: "orange",
@@ -306,7 +328,7 @@ class BaseShape {
     emptyColor;
     x;
     y;
-    constructor(blocks, blockSize, color, emptyColor, x = 0, y = 0) {
+    constructor(blocks = [], blockSize, color, emptyColor, x = 0, y = 0) {
         this.blocks = blocks;
         this.blockSize = blockSize;
         this.color = color;
@@ -327,18 +349,23 @@ class BaseShape {
     }
     clear(ctx) {
         for (const block of this.blocks) {
-            block.color = this.emptyColor;
-            block.draw(ctx);
+            block.clear(ctx);
         }
-        this.blocks = [];
     }
     createBlock(x, y) {
-        return new Block(this.color, this.blockSize, this.blockSize, x, y);
+        return new Block(this.color, this.emptyColor, this.blockSize, this.blockSize, x, y);
     }
-    createBlocksFrom(coords) {
-        for (const coord of coords) {
-            const b = this.createBlock(coord["x"], coord["y"]);
-            this.blocks.push(b);
+    updateBlocksFrom(coords) {
+        for (let index = 0; index < coords.length; index++) {
+            const coord = coords[index];
+            const block = this.blocks[index];
+            if (!block) {
+                this.blocks[index] = this.createBlock(coord.x, coord.y);
+            }
+            else {
+                block.y = coord.y;
+                block.x = coord.x;
+            }
         }
     }
 }
@@ -406,7 +433,7 @@ class Shape extends BaseShape {
             this.format = shapeFormats[this.type];
         }
         let coords = shapeCoords[this.type](this.blockSize, this.x, this.y, this.format);
-        this.createBlocksFrom(coords);
+        this.updateBlocksFrom(coords);
     }
     draw(ctx) {
         this.clear(ctx);
@@ -531,26 +558,28 @@ class Tetris {
         await delay(this.delayForDown);
         if (this.isPaused)
             return;
-        if (this.currentShape) {
-            const currentShape = this.shapeMove(this.currentShape, Key.Down);
-            if (currentShape === this.currentShape) {
-                if (await this.isEndOfCurrentShape()) {
-                    if (this.currentShape.y < 0) {
-                        this.gameOver();
-                    }
-                    else {
-                        this.tetrisShape.blocks.push(...this.currentShape.blocks);
-                        this.removeLineShape();
-                        this.newShape();
+        requestAnimationFrame(async () => {
+            if (this.currentShape) {
+                const currentShape = this.shapeMove(this.currentShape, Key.Down);
+                if (currentShape === this.currentShape) {
+                    if (await this.isEndOfCurrentShape()) {
+                        if (this.currentShape.y < 0) {
+                            this.gameOver();
+                        }
+                        else {
+                            this.tetrisShape.blocks.push(...this.currentShape.blocks);
+                            this.removeLineShape();
+                            this.newShape();
+                        }
                     }
                 }
+                else {
+                    this.currentShape = currentShape;
+                    this.currentShape.draw(this.context());
+                }
             }
-            else {
-                this.currentShape = currentShape;
-                this.currentShape.draw(this.context());
-            }
-        }
-        this.anima();
+            this.anima();
+        });
     }
     newShape() {
         if (!this.nextShape) {
@@ -560,6 +589,7 @@ class Tetris {
             this.nextShape.reshape(this.context());
         }
         this.currentShape = this.nextShape;
+        this.currentShape.clear(this.context());
         this.currentShape.x =
             this.fixedMiddle(this.column, this.currentShape) * this.blockSize;
         this.currentShape.y = 0 - this.currentShape.height * this.blockSize;
@@ -681,6 +711,7 @@ function main() {
     const canvas = document.createElement("canvas");
     app.appendChild(canvas);
     const tetris = new Tetris(canvas);
+    window.tetris = tetris;
     tetris.init();
 }
 main();

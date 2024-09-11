@@ -1,11 +1,33 @@
 class Block {
+  private old_x: number = 0;
+  private old_y: number = 0;
+
   constructor(
     public color: string = "black",
+    public emptyColor: string = "black",
     public readonly width: number = 32,
     public readonly height: number = 32,
-    public x: number = 0,
-    public y: number = 0,
+    private _x: number = 0,
+    private _y: number = 0,
   ) {}
+
+  set x(x: number) {
+    this.old_x = this._x;
+    this._x = x;
+  }
+
+  set y(y: number) {
+    this.old_y = this._y;
+    this._y = y;
+  }
+
+  get x() {
+    return this._x;
+  }
+
+  get y() {
+    return this._y;
+  }
 
   draw(ctx: CanvasRenderingContext2D) {
     ctx.fillStyle = this.color;
@@ -13,8 +35,20 @@ class Block {
     ctx.strokeRect(this.x, this.y, this.width, this.height);
   }
 
+  clear(ctx: CanvasRenderingContext2D) {
+    ctx.fillStyle = this.emptyColor;
+    ctx.fillRect(this.old_x, this.old_y, this.width, this.height);
+  }
+
   copy() {
-    return new Block(this.color, this.width, this.height, this.x, this.y);
+    return new Block(
+      this.color,
+      this.emptyColor,
+      this.width,
+      this.height,
+      this._x,
+      this._y,
+    );
   }
 }
 
@@ -54,7 +88,7 @@ enum ShapeType {
 
 const shapeColors: Record<ShapeType, string> = {
   [ShapeType.I]: "red",
-  [ShapeType.O]: "blue",
+  [ShapeType.O]: "RoyalBlue",
   [ShapeType.J]: "grey",
   [ShapeType.L]: "yellow",
   [ShapeType.S]: "orange",
@@ -309,7 +343,7 @@ const shapeCoords: Record<
 
 class BaseShape {
   constructor(
-    public blocks: Block[],
+    public blocks: Block[] = [],
     public blockSize: number,
     public color: string,
     public emptyColor: string,
@@ -333,20 +367,31 @@ class BaseShape {
 
   public clear(ctx: CanvasRenderingContext2D) {
     for (const block of this.blocks) {
-      block.color = this.emptyColor;
-      block.draw(ctx);
+      block.clear(ctx);
     }
-    this.blocks = [];
   }
 
   protected createBlock(x: number, y: number) {
-    return new Block(this.color, this.blockSize, this.blockSize, x, y);
+    return new Block(
+      this.color,
+      this.emptyColor,
+      this.blockSize,
+      this.blockSize,
+      x,
+      y,
+    );
   }
 
-  protected createBlocksFrom(coords: { x: number; y: number }[]) {
-    for (const coord of coords) {
-      const b = this.createBlock(coord["x"], coord["y"]);
-      this.blocks.push(b);
+  protected updateBlocksFrom(coords: { x: number; y: number }[]) {
+    for (let index = 0; index < coords.length; index++) {
+      const coord = coords[index];
+      const block = this.blocks[index];
+      if (!block) {
+        this.blocks[index] = this.createBlock(coord.x, coord.y);
+      } else {
+        block.y = coord.y;
+        block.x = coord.x;
+      }
     }
   }
 }
@@ -446,7 +491,7 @@ class Shape extends BaseShape {
       this.y,
       this.format,
     );
-    this.createBlocksFrom(coords);
+    this.updateBlocksFrom(coords);
   }
 
   draw(ctx: CanvasRenderingContext2D) {
@@ -595,26 +640,29 @@ class Tetris {
   private async anima() {
     await delay(this.delayForDown);
     if (this.isPaused) return;
-    if (this.currentShape) {
-      const currentShape = this.shapeMove(this.currentShape, Key.Down);
 
-      if (currentShape === this.currentShape) {
-        if (await this.isEndOfCurrentShape()) {
-          if (this.currentShape.y < 0) {
-            this.gameOver();
-          } else {
-            this.tetrisShape.blocks.push(...this.currentShape.blocks);
-            this.removeLineShape();
-            this.newShape();
+    requestAnimationFrame(async () => {
+      if (this.currentShape) {
+        const currentShape = this.shapeMove(this.currentShape, Key.Down);
+
+        if (currentShape === this.currentShape) {
+          if (await this.isEndOfCurrentShape()) {
+            if (this.currentShape.y < 0) {
+              this.gameOver();
+            } else {
+              this.tetrisShape.blocks.push(...this.currentShape.blocks);
+              this.removeLineShape();
+              this.newShape();
+            }
           }
+        } else {
+          this.currentShape = currentShape;
+          this.currentShape.draw(this.context());
         }
-      } else {
-        this.currentShape = currentShape;
-        this.currentShape.draw(this.context());
       }
-    }
 
-    this.anima();
+      this.anima();
+    });
   }
 
   public newShape() {
@@ -624,6 +672,7 @@ class Tetris {
       this.nextShape.reshape(this.context());
     }
     this.currentShape = this.nextShape;
+    this.currentShape.clear(this.context());
     this.currentShape.x =
       this.fixedMiddle(this.column, this.currentShape) * this.blockSize;
     this.currentShape.y = 0 - this.currentShape.height * this.blockSize;
@@ -820,6 +869,8 @@ function main() {
   app.appendChild(canvas);
 
   const tetris = new Tetris(canvas);
+
+  (window as any).tetris = tetris;
   tetris.init();
 }
 
