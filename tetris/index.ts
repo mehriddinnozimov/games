@@ -1,3 +1,5 @@
+type Writeable<T> = { -readonly [P in keyof T]: T[P] };
+
 class Block {
   private old_x: number = 0;
   private old_y: number = 0;
@@ -48,6 +50,17 @@ class Block {
       this.height,
       this._x,
       this._y,
+    );
+  }
+
+  static from(block: Block) {
+    return new Block(
+      block.color,
+      block.emptyColor,
+      block.width,
+      block.height,
+      block._x,
+      block._y,
     );
   }
 }
@@ -371,6 +384,17 @@ class BaseShape {
     }
   }
 
+  static from(shape: BaseShape) {
+    return new BaseShape(
+      shape.blocks.map((b) => Block.from(b)),
+      shape.blockSize,
+      shape.color,
+      shape.emptyColor,
+      shape.x,
+      shape.y,
+    );
+  }
+
   protected createBlock(x: number, y: number) {
     return new Block(
       this.color,
@@ -435,6 +459,20 @@ class Shape extends BaseShape {
     super([], blockSize, shapeColors[type], emptyColor, x, y);
 
     this.update();
+  }
+
+  static from(_shape: Shape) {
+    const shape = new Shape(
+      _shape.type,
+      _shape.blockSize,
+      _shape.emptyColor,
+      _shape.x,
+      _shape.y,
+      _shape.format,
+    );
+    shape.blocks = _shape.blocks.map((b) => Block.from(b));
+    shape.update();
+    return shape;
   }
 
   copy() {
@@ -518,11 +556,11 @@ class Tetris {
   private textStyle = "";
   private isGameOver = false;
   constructor(
-    private readonly canvas: HTMLCanvasElement,
-    public readonly row: number = 20,
-    public readonly column: number = 10,
-    public readonly blockSize: number = 36,
-    public readonly defaultColor: string = "black",
+    private canvas: HTMLCanvasElement,
+    public row: number = 20,
+    public column: number = 10,
+    public blockSize: number = 36,
+    public defaultColor: string = "black",
   ) {
     this.width = this.column * this.blockSize;
     this.height = this.row * this.blockSize;
@@ -565,7 +603,7 @@ class Tetris {
 
   private randomShape() {
     const shapeTypes = Object.values(ShapeType);
-    const index = random(0, shapeTypes.length - 1);
+    const index = this.random(0, shapeTypes.length - 1);
     const shape = new Shape(
       shapeTypes[index],
       this.blockSize,
@@ -613,12 +651,12 @@ class Tetris {
   private async isEndOfCurrentShape() {
     if (!this.currentShape) return false;
 
-    await delay(this.waitForNextShape);
+    await this.delay(this.waitForNextShape);
     const currentShape = this.shapeMove(this.currentShape, Key.Down);
     return this.currentShape === currentShape;
   }
 
-  gameOver() {
+  private gameOver() {
     this.isPaused = true;
     this.isGameOver = true;
     const ctx = this.context();
@@ -638,7 +676,7 @@ class Tetris {
   }
 
   private async anima() {
-    await delay(this.delayForDown);
+    await this.delay(this.delayForDown);
     if (this.isPaused) return;
 
     requestAnimationFrame(async () => {
@@ -689,7 +727,7 @@ class Tetris {
     this.nextShape.draw(this.context());
   }
 
-  fixedMiddle(column: number, shape: Shape, addition: number = 1) {
+  private fixedMiddle(column: number, shape: Shape, addition: number = 1) {
     return Math.floor(column / 2) + addition - Math.max(shape.width, 2);
   }
 
@@ -751,7 +789,7 @@ class Tetris {
     this.tetrisShape.draw(ctx);
   }
 
-  updateScore(x: number) {
+  private updateScore(x: number) {
     this.delayForDown = this.delayForDown - x * 10;
     if (x > 2) x = x * 2;
     this.score += x;
@@ -776,7 +814,7 @@ class Tetris {
     );
   }
 
-  updateRightBar() {
+  private updateRightBar() {
     const ctx = this.context();
     ctx.font = this.textStyle;
     ctx.fillStyle = this.textColor;
@@ -788,21 +826,21 @@ class Tetris {
       this.height - this.blockSize * 10,
     );
 
-    const pauseText = `${getKeyFromValue(keys, Key.Pause)}: Pause/Start`;
+    const pauseText = `${this.getKeyFromValue(keys, Key.Pause)}: Pause/Start`;
     ctx.fillText(
       pauseText,
       this.calculateMiddle(pauseText, ctx, this.rightBarWidth) + this.width,
       this.height - this.blockSize * 9,
     );
 
-    const downText = `${getKeyFromValue(keys, Key.Down)}: Down`;
+    const downText = `${this.getKeyFromValue(keys, Key.Down)}: Down`;
     ctx.fillText(
       downText,
       this.calculateMiddle(downText, ctx, this.rightBarWidth) + this.width,
       this.height - this.blockSize * 8,
     );
 
-    const rotateLeftText = `${getKeyFromValue(keys, Key.NextFormat)}: Rotate Right`;
+    const rotateLeftText = `${this.getKeyFromValue(keys, Key.NextFormat)}: Rotate Right`;
     ctx.fillText(
       rotateLeftText,
       this.calculateMiddle(rotateLeftText, ctx, this.rightBarWidth) +
@@ -810,7 +848,7 @@ class Tetris {
       this.height - this.blockSize * 7,
     );
 
-    const rotateRightText = `${getKeyFromValue(keys, Key.PreviousFormat)}: Rotate Left`;
+    const rotateRightText = `${this.getKeyFromValue(keys, Key.PreviousFormat)}: Rotate Left`;
     ctx.fillText(
       rotateRightText,
       this.calculateMiddle(rotateRightText, ctx, this.rightBarWidth) +
@@ -818,14 +856,14 @@ class Tetris {
       this.height - this.blockSize * 6,
     );
 
-    const toRightText = `${getKeyFromValue(keys, Key.Right)}: To Right`;
+    const toRightText = `${this.getKeyFromValue(keys, Key.Right)}: To Right`;
     ctx.fillText(
       toRightText,
       this.calculateMiddle(toRightText, ctx, this.rightBarWidth) + this.width,
       this.height - this.blockSize * 5,
     );
 
-    const toLeftText = `${getKeyFromValue(keys, Key.Left)}: To Left`;
+    const toLeftText = `${this.getKeyFromValue(keys, Key.Left)}: To Left`;
     ctx.fillText(
       toLeftText,
       this.calculateMiddle(toLeftText, ctx, this.rightBarWidth) + this.width,
@@ -860,34 +898,114 @@ class Tetris {
     if (!ctx) throw new Error("Ctx not found in canvas");
     return ctx;
   }
+
+  private delay(ms: number) {
+    return new Promise((res) => {
+      setTimeout(() => {
+        res(undefined);
+      }, ms);
+    });
+  }
+
+  private random(x: number, y: number) {
+    return Math.floor(Math.random() * (y - x + 1)) + x;
+  }
+
+  private getKeyFromValue<T extends object>(obj: T, value: T[keyof T]) {
+    return Object.keys(obj).find((key) => obj[key as keyof T] === value);
+  }
+
+  private toObject() {
+    const object = {
+      row: this.row,
+      column: this.column,
+      blockSize: this.blockSize,
+      defaultColor: this.defaultColor,
+    } as Tetris;
+
+    object.width = this.width;
+    object.height = this.height;
+    object.isPaused = this.isPaused;
+    object.waitForNextShape = this.waitForNextShape;
+    object._delayForDown = this._delayForDown;
+    object.delayForDown = this.delayForDown;
+    object.rightBarWidth = this.rightBarWidth;
+    object.tetrisShape = this.tetrisShape;
+    object.currentShape = this.currentShape;
+    object.nextShape = this.nextShape;
+    object.score = this.score;
+    object.rightBarColumn = this.rightBarColumn;
+    object.textColor = this.textColor;
+    object.textStyle = this.textStyle;
+    object.isGameOver = this.isGameOver;
+
+    return object;
+  }
+
+  public save() {
+    const id = Date.now();
+    localStorage.setItem(`tetris-${id}`, JSON.stringify(this.toObject()));
+    return id;
+  }
+
+  load(id: number) {
+    const t = localStorage.getItem(`tetris-${id}`);
+    if (!t) throw new Error("Data not found");
+
+    const _tetris = JSON.parse(t) as Tetris;
+
+    this.clear(this.context());
+    this.clearRightBar(this.context());
+    this.updateRightBar();
+    this.updateScore(0);
+
+    this.row = _tetris.row;
+    this.column = _tetris.column;
+    this.blockSize = _tetris.blockSize;
+    this.defaultColor = _tetris.defaultColor;
+
+    this.width = _tetris.width;
+    this.height = _tetris.height;
+    this.isPaused = true;
+    this.waitForNextShape = _tetris.waitForNextShape;
+    this._delayForDown = _tetris._delayForDown;
+    this.delayForDown = _tetris.delayForDown;
+    this.rightBarWidth = _tetris.rightBarWidth;
+    this.score = _tetris.score;
+    this.rightBarColumn = _tetris.rightBarColumn;
+    this.textColor = _tetris.textColor;
+    this.textStyle = _tetris.textStyle;
+    this.isGameOver = _tetris.isGameOver;
+
+    this.tetrisShape = BaseShape.from(_tetris.tetrisShape);
+    this.tetrisShape.draw(this.context());
+    if (_tetris.currentShape) {
+      this.currentShape = Shape.from(_tetris.currentShape);
+      this.currentShape.draw(this.context());
+    }
+    if (_tetris.nextShape) {
+      this.nextShape = Shape.from(_tetris.nextShape);
+      this.nextShape.draw(this.context());
+    }
+  }
+}
+let _canvas: undefined | HTMLCanvasElement = undefined;
+function createCanvas() {
+  if (!_canvas) {
+    const app = document.getElementById("app");
+    if (!app) throw new Error("App element not found");
+    _canvas = document.createElement("canvas");
+    app.appendChild(_canvas);
+  }
+
+  return _canvas;
 }
 
 function main() {
-  const app = document.getElementById("app");
-  if (!app) return;
-  const canvas = document.createElement("canvas");
-  app.appendChild(canvas);
-
-  const tetris = new Tetris(canvas);
+  const tetris = new Tetris(createCanvas());
 
   (window as any).tetris = tetris;
   tetris.init();
 }
 
 main();
-
-function delay(ms: number) {
-  return new Promise((res) => {
-    setTimeout(() => {
-      res(undefined);
-    }, ms);
-  });
-}
-
-function random(x: number, y: number) {
-  return Math.floor(Math.random() * (y - x + 1)) + x;
-}
-
-function getKeyFromValue<T extends object>(obj: T, value: T[keyof T]) {
-  return Object.keys(obj).find((key) => obj[key as keyof T] === value);
-}
